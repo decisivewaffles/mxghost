@@ -6,10 +6,13 @@ import (
 	"go.yaml.in/yaml/v4"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"kernel.org/pub/linux/libs/security/libcap/cap"
 )
 
 // multiFlag is a flag.Value implementation that accumulates every occurrence
@@ -73,6 +76,7 @@ func readConfig(path string) (Config, error) {
 
 func main() {
 	log.Printf("Starting %+v", os.Args)
+	dropUnusedCapabilities()
 	confPath := ""
 	tmpFlagSet := flag.NewFlagSet("tmp", flag.ContinueOnError)
 	tmpFlagSet.SetOutput(io.Discard)
@@ -85,13 +89,14 @@ func main() {
 		log.Fatalf("Unable to read configuration: %v", err)
 	}
 
+	var flagListeners multiFlag
 	flag.StringVar(&confPath, "config", "",
 		"Path to config file")
 	flag.StringVar(&conf.MxAddr, "mxaddr", conf.MxAddr,
 		"Primary MX IP address and port (required)")
 	flag.StringVar(&conf.MxName, "mxname", conf.MxName,
 		"Primary MX name (for TLS validation) (required)")
-	flag.Var(&conf.Listeners, "listen",
+	flag.Var(&flagListeners, "listen",
 		"Listen on `addr:port`; use brackets for IPv6, e.g. [::1]:25\n\t"+
 			"(repeatable; default: 0.0.0.0:25 and [::]:25)")
 	flag.StringVar(&conf.AllowListPath, "allowlist",
@@ -148,12 +153,22 @@ func main() {
 
 	// == Defaults ==============================================================
 
+	if len(flagListeners) > 0 {
+		conf.Listeners = flagListeners
+	}
+
 	if len(conf.Listeners) == 0 {
 		conf.Listeners = multiFlag{"0.0.0.0:25", "[::]:25"}
 	}
 
 	if conf.QueueDir == "" {
 		conf.QueueDir = "/var/spool/proxmail"
+	}
+
+	// == Bind to listening ports ===============================================
+	listeners, err := bindListeners(conf.Listeners)
+	if err != nil {
+		log.Fatalf("listeners: %v", err)
 	}
 
 	// == Allow List ============================================================
@@ -173,7 +188,7 @@ func main() {
 	// the TLS keypair, creating the queue directory, and binding listeners.
 	// Errors here are fatal and indicate misconfiguration.
 	srv, err := NewServer(ServerConfig{
-		Listeners: []string(conf.Listeners),
+		Listeners: listeners,
 		AllowList: allowList,
 		CertPath:  conf.CertPath,
 		KeyPath:   conf.KeyPath,
@@ -217,4 +232,57 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	s := <-quit
 	log.Printf("received %v, shutting down", s)
+}
+
+func bindListeners(listenaddrs []string) ([]net.Listener, error) {
+	listeners := make([]net.Listener, 0)
+
+	for _, addr := range listenaddrs {
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to listen on %s: %v", addr, err)
+		}
+		listeners = append(listeners, listener)
+	}
+	dropBindCapability()
+	return listeners, nil
+}
+
+func dropUnusedCapabilities() {
+	// Drop unneeded permissions
+	log.Printf("capabilities: started with %s", cap.GetProc().String())
+	caps := cap.GetProc()
+	alarmAllowed, _ := caps.GetFlag(cap.Permitted, cap.WAKE_ALARM)
+	bindAllowed, _ := caps.GetFlag(cap.Permitted, cap.NET_BIND_SERVICE)
+	caps.Clear()
+	if alarmAllowed {
+		caps.SetFlag(cap.Effective, true, cap.WAKE_ALARM)
+		caps.SetFlag(cap.Permitted, true, cap.WAKE_ALARM)
+	}
+	if bindAllowed {
+		caps.SetFlag(cap.Effective, true, cap.NET_BIND_SERVICE)
+		caps.SetFlag(cap.Permitted, true, cap.NET_BIND_SERVICE)
+	}
+	err := caps.SetProc()
+	if err != nil {
+		log.Printf("capabilities: Unable to drop: %v", err)
+	} else {
+		log.Printf("capabilities: currently %s", cap.GetProc().String())
+	}
+}
+
+func dropBindCapability() {
+	caps := cap.GetProc()
+	alarmAllowed, _ := caps.GetFlag(cap.Permitted, cap.WAKE_ALARM)
+	caps.Clear()
+	if alarmAllowed {
+		caps.SetFlag(cap.Effective, true, cap.WAKE_ALARM)
+		caps.SetFlag(cap.Permitted, true, cap.WAKE_ALARM)
+	}
+	err := caps.SetProc()
+	if err != nil {
+		log.Printf("capabilities: Unable to minimize: %v", err)
+	} else {
+		log.Printf("capabilities: currently %s", cap.GetProc().String())
+	}
 }

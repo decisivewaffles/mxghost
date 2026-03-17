@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 
 // ServerConfig is the complete configuration for the SMTP ingestion server.
 type ServerConfig struct {
-	Listeners []string
+	Listeners []net.Listener
 	AllowList *AllowList
 	CertPath  string
 	KeyPath   string
@@ -55,33 +56,31 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 }
 
 // Run starts one listener goroutine per entry in cfg.Listeners and blocks
-// until all of them have stopped.  A failed individual listener is logged but
+// until all of them have stopped. A failed individual listener is logged but
 // does not affect the others.
 func (s *Server) Run() {
 	var wg sync.WaitGroup
-	for _, addr := range s.cfg.Listeners {
-		addr := addr // per-iteration variable (safe on Go <1.22 too)
+	for _, listener := range s.cfg.Listeners {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := s.serve(addr); err != nil {
-				log.Printf("server: listener %s: %v", addr, err)
+			if err := s.serve(listener); err != nil {
+				log.Printf("server: listener %s: %v", listener, err)
 			}
 		}()
 	}
 	wg.Wait()
 }
 
-func (s *Server) serve(addr string) error {
+func (s *Server) serve(listener net.Listener) error {
 	gsrv := smtp.NewServer(&smtpBackend{srv: s})
-	gsrv.Addr = addr
 	gsrv.Domain = s.cfg.Banner
 	gsrv.TLSConfig = s.tlsConfig
 	gsrv.AllowInsecureAuth = false
 	gsrv.MaxMessageBytes = 40 * 1024 * 1024 // 40 MiB hard cap
 
-	log.Printf("server: listening on %s", addr)
-	return gsrv.ListenAndServe()
+	log.Printf("server: listening on %v", listener.Addr())
+	return gsrv.Serve(listener)
 }
 
 // == smtp.Backend ==============================================================
@@ -89,9 +88,11 @@ func (s *Server) serve(addr string) error {
 type smtpBackend struct{ srv *Server }
 
 func (b *smtpBackend) NewSession(c *smtp.Conn) (smtp.Session, error) {
-	// The TCP remote address is known at connection time.
-	// TLS details are captured later in Data() — for STARTTLS connections the
-	// handshake has not yet occurred when NewSession is called.
+	log.Printf("server: connection %s -> %s as %s",
+		c.Conn().RemoteAddr().String(),
+		c.Conn().LocalAddr().String(),
+		c.Hostname(),
+	)
 	return &smtpSession{
 		bkd:      b,
 		conn:     c,
