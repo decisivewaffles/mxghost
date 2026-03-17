@@ -72,21 +72,23 @@ func (c *Client) Run() {
 			log.Printf("client: queue read: %v — stopping", err)
 			return
 		}
-		c.deliver(qi)
+		err = c.deliver(qi)
+		if err != nil {
+			log.Printf("client: send error: %v", err)
+		}
 	}
 }
 
-// deliver opens a fresh connection to the backend, transmits exactly one
-// message, and closes the connection.  A fresh connection per message avoids
-// stale-connection errors during idle periods and keeps state management
-// trivial.
+// Deliver one message from the queue to the primary MX
 func (c *Client) deliver(qi *QueueItem) error {
+	log.Printf("client id=%s: deliver()", qi.Message.ID)
 	conn, err := c.dial()
 	if err != nil {
-		log.Printf("client: Unable to connect, waiting %d seconds", c.cfg.RetryDelay)
-		time.Sleep(c.cfg.RetryDelay)
+		log.Printf("client: Unable to connect, waiting %d seconds", c.cfg.RetryDelay/time.Second)
+		time.Sleep(c.cfg.RetryDelay / time.Second)
 		return err
 	}
+	log.Printf("client id=%s: connected", qi.Message.ID)
 
 	// Bound the entire SMTP exchange.  This covers banner + EHLO + STARTTLS +
 	// MAIL + RCPT(s) + DATA transfer + QUIT.
@@ -94,7 +96,6 @@ func (c *Client) deliver(qi *QueueItem) error {
 		conn.Close()
 		return fmt.Errorf("set deadline: %w", err)
 	}
-
 	// Send the PROXY header
 	proxyHeader, err := ProxyProtocolHeader(qi)
 	if err != nil {
@@ -106,6 +107,7 @@ func (c *Client) deliver(qi *QueueItem) error {
 		conn.Close()
 		return fmt.Errorf("proxy header send failure: %w", err)
 	}
+	log.Printf("client id=%s: PROXY PROTO SENT", qi.Message.ID)
 
 	// NewClient reads the server banner (220).  On error the underlying conn
 	// is already closed by the smtp package, but we Close() defensively.
@@ -116,13 +118,16 @@ func (c *Client) deliver(qi *QueueItem) error {
 		return fmt.Errorf("smtp handshake: %w", err)
 	}
 	defer sc.Close() // safe to call after Quit(); double-close on net.Conn is harmless
+	log.Printf("client id=%s: HANDSHAKE done", qi.Message.ID)
 
 	// EHLO — must precede Extension() checks and STARTTLS.
 	if err := sc.Hello(qi.Message.Helo); err != nil {
+		log.Printf("client: EHLO failed: %w", err)
 		qi.Fail()
 		return fmt.Errorf("EHLO: %w", err)
 	}
 
+	log.Printf("client id=%s: EHLO done", qi.Message.ID)
 	// STARTTLS — only considered on plain-TCP connections; implicit-TLS
 	// connections are already encrypted at the transport layer.
 	if !c.cfg.ImplicitTLS {
@@ -137,6 +142,7 @@ func (c *Client) deliver(qi *QueueItem) error {
 			}
 		}
 	}
+	log.Printf("client id=%s: TLS done", qi.Message.ID)
 
 	// MAIL FROM
 	if err := sc.Mail(qi.Message.MailFrom); err != nil {
@@ -151,6 +157,7 @@ func (c *Client) deliver(qi *QueueItem) error {
 			return fmt.Errorf("RCPT TO <%s>: %w", rcpt, err)
 		}
 	}
+	log.Printf("client id=%s: Starting DATA", qi.Message.ID)
 
 	// DATA
 	//
@@ -177,12 +184,15 @@ func (c *Client) deliver(qi *QueueItem) error {
 		return fmt.Errorf("DATA commit: %w", err)
 	}
 
+	log.Printf("client id=%s: Sent DATA", qi.Message.ID)
+
 	// QUIT — a failure here does not undo delivery; the message was accepted
 	// when DATA committed.  Log the error and report success to the caller.
 	if err := sc.Quit(); err != nil {
 		log.Printf("client: id=%s QUIT error (message was accepted): %v", qi.Message.ID, err)
 	}
 
+	log.Printf("client: Send complete")
 	// Remove message from delivery queue
 	qi.Delete()
 	return nil
