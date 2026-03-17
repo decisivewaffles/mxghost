@@ -17,7 +17,7 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
-// ── Server ────────────────────────────────────────────────────────────────────
+// == Server ====================================================================
 
 // ServerConfig is the complete configuration for the SMTP ingestion server.
 type ServerConfig struct {
@@ -84,7 +84,7 @@ func (s *Server) serve(addr string) error {
 	return gsrv.ListenAndServe()
 }
 
-// ── smtp.Backend ──────────────────────────────────────────────────────────────
+// == smtp.Backend ==============================================================
 
 type smtpBackend struct{ srv *Server }
 
@@ -100,7 +100,7 @@ func (b *smtpBackend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	}, nil
 }
 
-// ── smtp.Session ──────────────────────────────────────────────────────────────
+// == smtp.Session ==============================================================
 
 type smtpSession struct {
 	bkd      *smtpBackend
@@ -191,7 +191,7 @@ func (s *smtpSession) Logout() error { return nil }
 
 func (s *smtpSession) Reset() {}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// == Helpers ===================================================================
 
 // newMsgID returns a time-ordered, collision-resistant message identifier
 // suitable for use as a filename.

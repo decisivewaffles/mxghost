@@ -69,7 +69,7 @@ func main() {
 
 	flag.Parse()
 
-	// ── Validation ────────────────────────────────────────────────────────────
+	// == Validation ============================================================
 
 	var errs []string
 	errorf := func(format string, a ...any) {
@@ -104,25 +104,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ── Defaults ──────────────────────────────────────────────────────────────
+	// == Defaults ==============================================================
 
 	if len(listeners) == 0 {
 		listeners = multiFlag{"0.0.0.0:25", "[::]:25"}
 	}
 
-	// ── Allow List ────────────────────────────────────────────────────────────
+	// == Allow List ============================================================
 	allowList, err := NewAllowList(allowListPath)
 	if err != nil {
 		log.Fatalf("allowlist: %v", err)
 	}
 
-	// ── Message Queue ─────────────────────────────────────────────────────────
+	// == Message Queue =========================================================
 	queue, err := NewQueue(queueDir)
 	if err != nil {
 		log.Fatalf("queue: %v", err)
 	}
 
-	// ── Server ────────────────────────────────────────────────────────────────
+	// == Server ================================================================
 	// NewServer performs all initialisation that can fail at startup: loading
 	// the TLS keypair, creating the queue directory, and binding listeners.
 	// Errors here are fatal and indicate misconfiguration.
@@ -138,7 +138,7 @@ func main() {
 		log.Fatalf("server: %v", err)
 	}
 
-	// ── Client ────────────────────────────────────────────────────────────────
+	// == Client ================================================================
 	// NewClient validates its configuration but does not attempt a connection;
 	// delivery failures are expected and handled inside Client.Run.
 	cli, err := NewClient(ClientConfig{
@@ -154,7 +154,7 @@ func main() {
 		log.Fatalf("client: %v", err)
 	}
 
-	// ── Start ─────────────────────────────────────────────────────────────────
+	// == Start =================================================================
 
 	go srv.Run()
 	go cli.Run()
@@ -164,7 +164,7 @@ func main() {
 		listeners, mxAddr, mxName, queueDir,
 	)
 
-	// ── Shutdown ──────────────────────────────────────────────────────────────
+	// == Shutdown ==============================================================
 	// TODO: propagate cancellation via context to srv.Run and cli.Run for
 	// graceful in-flight draining before exit.
 	quit := make(chan os.Signal, 1)

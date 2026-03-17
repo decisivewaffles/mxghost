@@ -164,7 +164,7 @@ func (q *Queue) Write(msg QueuedMessage, body []byte) error {
 	return nil
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// == Helpers ===================================================================
 
 func firstMsgFilename(entries []os.DirEntry) string {
 	sort.Slice(entries, func(i, j int) bool {

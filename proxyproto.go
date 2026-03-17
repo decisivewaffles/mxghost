@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-// ── PROXY Protocol v2 constants ───────────────────────────────────────────────
+// == PROXY Protocol v2 constants ===============================================
 //
 // Reference: HAProxy PROXY Protocol Specification §2.2
 // https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
@@ -60,21 +60,21 @@ const (
 // before reading the SMTP banner; the spec requires the header to precede all
 // other data on the connection.
 func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
-	// ── 1. Parse source address ───────────────────────────────────────────────
+	// == 1. Parse source address ===============================================
 	//
 	srcIP, srcPort, err := parseHostPort(qi.Message.ClientIP)
 	if err != nil {
 		return nil, err
 	}
 
-	// ── 2. Parse / resolve destination address ────────────────────────────────
+	// == 2. Parse / resolve destination address ================================
 	//
 	dstIP, dstPort, err := parseHostPort(qi.Message.ServerIP)
 	if err != nil {
 		return nil, err
 	}
 
-	// ── 3. Select address family and encode the address block ─────────────────
+	// == 3. Select address family and encode the address block =================
 	//
 	// Prefer AF_INET when both addresses have a 4-byte representation; this
 	// keeps the header compact and is the common case for IPv4-only deployments.
@@ -102,13 +102,13 @@ func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
 		binary.BigEndian.PutUint16(addrBlock[34:36], uint16(dstPort))
 	}
 
-	// ── 4. Build TLV extensions ───────────────────────────────────────────────
+	// == 4. Build TLV extensions ===============================================
 	var tlvs []byte
 	if qi.Message.TLSUsed {
 		tlvs = pp2BuildSSLTLV(qi.Message.TLSVersion, qi.Message.TLSCipher)
 	}
 
-	// ── 5. Assemble the complete header ───────────────────────────────────────
+	// == 5. Assemble the complete header =======================================
 	//
 	// Fixed 16-byte prefix layout:
 	//   [0 :12]  12 bytes  signature
