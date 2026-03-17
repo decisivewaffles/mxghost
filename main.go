@@ -64,7 +64,7 @@ func main() {
 		"`Path` to TLS private key file (.key) (required)")
 	flag.StringVar(&banner, "banner", "",
 		"Hostname announced in the SMTP 220 greeting (required)")
-	flag.StringVar(&queueDir, "queue", "/var/spool/smtp-relay",
+	flag.StringVar(&queueDir, "queue", "/var/spool/proxmail",
 		"`Directory` used for queue storage")
 
 	flag.Parse()
@@ -146,7 +146,7 @@ func main() {
 		MXAddr:      mxAddr,
 		MXName:      mxName,
 		ImplicitTLS: false,
-		RequireTLS:  false,
+		RequireTLS:  true,
 		TLSInsecure: false,
 		RetryDelay:  time.Duration(reconnect) * time.Second,
 	})
