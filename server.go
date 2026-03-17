@@ -132,11 +132,11 @@ func (s *smtpSession) Rcpt(to string, opts *smtp.RcptOptions) error {
 	if !allow {
 		log.Printf("server: reject client=%s rcpt=<%s> reason=not-in-allowlist",
 			s.clientIP, to)
-		return &smtp.SMTPError{
+		return s.errAndClose(&smtp.SMTPError{
 			Code:         550,
 			EnhancedCode: smtp.EnhancedCode{5, 1, 1},
 			Message:      "User unknown",
-		}
+		})
 	}
 	s.rcptTo = append(s.rcptTo, to)
 	return nil
@@ -176,11 +176,11 @@ func (s *smtpSession) Data(r io.Reader) error {
 	if err := s.bkd.srv.cfg.Queue.Write(msg, body); err != nil {
 		log.Printf("server: enqueue id=%s client=%s: %v",
 			msg.ID, s.clientIP, err)
-		return &smtp.SMTPError{
+		return s.errAndClose(&smtp.SMTPError{
 			Code:         451,
 			EnhancedCode: smtp.EnhancedCode{4, 3, 0},
 			Message:      "Temporary storage failure, please retry",
-		}
+		})
 	}
 
 	log.Printf("server: accepted id=%s from=<%s> to=%v client=%s tls=%v cipher=%q",
@@ -220,4 +220,17 @@ func tlsVersionName(v uint16) string {
 	default:
 		return fmt.Sprintf("0x%04x", v)
 	}
+}
+
+func (s *smtpSession) errAndClose(err *smtp.SMTPError) *smtp.SMTPError {
+	msg := fmt.Sprintf("%d %d.%d.%d %s\r\n",
+		err.Code,
+		err.EnhancedCode[0],
+		err.EnhancedCode[1],
+		err.EnhancedCode[2],
+		err.Message,
+	)
+	s.conn.Conn().Write([]byte(msg))
+	s.conn.Conn().Close()
+	return err
 }
