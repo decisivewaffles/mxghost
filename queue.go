@@ -76,7 +76,7 @@ func (q *Queue) Read() (*QueueItem, error) {
 		if err != nil {
 			return nil, err
 		}
-		filename := firstMsgFilename(entries)
+		filename = firstMsgFilename(entries)
 		if filename == "" {
 			<-q.notify
 		}
