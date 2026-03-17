@@ -5,4 +5,5 @@ go 1.26.1
 require (
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/emersion/go-smtp v0.24.0 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
 )
