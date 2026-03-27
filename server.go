@@ -29,6 +29,7 @@ type ServerConfig struct {
 	Banner    string // hostname in 220 greeting and EHLO reply
 	Queue     *Queue
 	Notify    chan struct{} // non-blocking send when a message is queued
+	RwTimeout time.Duration // Drop connection after timeout
 }
 
 // Server is the inbound SMTP half of the relay.
@@ -78,6 +79,8 @@ func (s *Server) serve(listener net.Listener) error {
 	gsrv.TLSConfig = s.tlsConfig
 	gsrv.AllowInsecureAuth = false
 	gsrv.MaxMessageBytes = 40 * 1024 * 1024 // 40 MiB hard cap
+	gsrv.ReadTimeout = s.cfg.RwTimeout
+	gsrv.WriteTimeout = s.cfg.RwTimeout
 
 	log.Printf("server: listening on %v", listener.Addr())
 	return gsrv.Serve(listener)

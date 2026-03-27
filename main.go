@@ -46,6 +46,7 @@ type Config struct {
 	Listeners     multiFlag `yaml:"listen"`
 	AllowListPath string    `yaml:"allowlist"`
 	Reconnect     int       `yaml:"reconnect"`
+	RwTimeout     int       `yaml:"rwtimeout"`
 	CertPath      string    `yaml:"cert"`
 	KeyPath       string    `yaml:"key"`
 	Banner        string    `yaml:"banner"`
@@ -104,6 +105,8 @@ func main() {
 			"(repeatable; default: 0.0.0.0:25 and [::]:25)")
 	flag.StringVar(&conf.AllowListPath, "allowlist",
 		conf.AllowListPath, "Path to list of allowed recipients (required)")
+	flag.IntVar(&conf.RwTimeout, "rwtimeout", conf.RwTimeout,
+		"Read/write activity timeout (seconds) before closing connection")
 	flag.IntVar(&conf.Reconnect, "reconnect", conf.Reconnect,
 		"Queue retry `interval` in seconds when the queue is non-empty")
 	flag.StringVar(&conf.CertPath, "cert", conf.CertPath,
@@ -172,8 +175,12 @@ func main() {
 		conf.QueueDir = "/var/spool/proxmail"
 	}
 
+	if conf.RwTimeout == 0 {
+		conf.RwTimeout = 30
+	}
+
 	// == Bind to listening ports ===============================================
-	listeners, err := bindListeners(conf.Listeners, conf.MxAddr, time.Duration(conf.MxTimeout)*time.Second)
+	listeners, err := bindListeners(conf.Listeners, conf.MxAddr, time.Duration(conf.MxTimeout)*time.Second, time.Duration(conf.RwTimeout)*time.Second)
 	if err != nil {
 		log.Fatalf("listeners: %v", err)
 	}
@@ -201,6 +208,7 @@ func main() {
 		KeyPath:   conf.KeyPath,
 		Banner:    conf.Banner,
 		Queue:     queue,
+		RwTimeout: time.Duration(conf.RwTimeout) * time.Second,
 	})
 	if err != nil {
 		log.Fatalf("server: %v", err)
@@ -241,7 +249,7 @@ func main() {
 	log.Printf("received %v, shutting down", s)
 }
 
-func bindListeners(listenaddrs []string, backendAddr string, ctTimeout time.Duration) ([]net.Listener, error) {
+func bindListeners(listenaddrs []string, backendAddr string, ctTimeout, rwTimeout time.Duration) ([]net.Listener, error) {
 	listeners := make([]net.Listener, 0)
 
 	for _, addr := range listenaddrs {
@@ -249,7 +257,7 @@ func bindListeners(listenaddrs []string, backendAddr string, ctTimeout time.Dura
 		if err != nil {
 			return nil, fmt.Errorf("Unable to listen on %s: %v", addr, err)
 		}
-		ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout)
+		ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout, rwTimeout)
 
 		listeners = append(listeners, ctListener)
 	}

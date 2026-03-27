@@ -10,8 +10,6 @@ package main
 // when the backend is reachable.
 
 import (
-	"errors"
-	"io"
 	"log"
 	"net"
 	"time"
@@ -21,21 +19,28 @@ import (
 type CutThroughListener struct {
 	net.Listener
 	backendAddr string
-	timeout     time.Duration
+	ctTimeout   time.Duration
+	rwTimeout   time.Duration
 
-	// queue stores connections that failed the cut-through (dial timeout)
+	// ctFailQueue stores connections that failed the cut-through (dial timeout)
 	// so they can be returned by Accept().
-	queue chan net.Conn
+	ctFailQueue chan net.Conn
+	// acceptQueue is used to make the underlying net.Listener.Accept() selectable
+	acceptQueue chan net.Conn
 }
 
 // NewCutThroughListener creates a new listener.
-func NewCutThroughListener(listener net.Listener, backendAddr string, timeout time.Duration) *CutThroughListener {
-	return &CutThroughListener{
+func NewCutThroughListener(listener net.Listener, backendAddr string, ctTimeout, rwTimeout time.Duration) *CutThroughListener {
+	l := &CutThroughListener{
 		Listener:    listener,
 		backendAddr: backendAddr,
-		timeout:     timeout,
-		queue:       make(chan net.Conn, 128),
+		ctTimeout:   ctTimeout,
+		rwTimeout:   rwTimeout,
+		ctFailQueue: make(chan net.Conn, 128),
+		acceptQueue: make(chan net.Conn, 1),
 	}
+	go l.runAcceptQueue()
+	return l
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -43,51 +48,44 @@ func NewCutThroughListener(listener net.Listener, backendAddr string, timeout ti
 // to connections that timed out during the cut-through dial.
 func (l *CutThroughListener) Accept() (net.Conn, error) {
 	for {
-		// Non-blocking check for queued (timed-out) connections first.
+		// Non-blocking check for timed-out connections first.
 		// This ensures we don't starve existing clients if the listener is busy.
 		select {
-		case conn := <-l.queue:
+		case conn := <-l.ctFailQueue:
 			return conn, nil
 		default:
 		}
 
-		// Block until we get a raw connection OR a queued connection becomes available.
+		// Block until we get a new connection OR a timed-out connection becomes available.
 		select {
-		case conn := <-l.queue:
+		case conn := <-l.ctFailQueue:
 			return conn, nil
-		case rawConn, ok := <-l.acceptChan():
-			if !ok {
-				// Underlying listener closed
-				return nil, errors.New("listener closed")
-			}
+		case rawConn := <-l.acceptQueue:
 			// We received a raw connection. Attempt cut-through.
 			go l.handleCutThrough(rawConn)
 		}
 	}
 }
 
-// acceptChan wraps the blocking Accept() call in a channel for select usage.
-func (l *CutThroughListener) acceptChan() <-chan net.Conn {
-	ch := make(chan net.Conn, 1)
-	go func() {
+// runAcceptQueue calls Accept() and puts the result into acceptQueue
+func (l *CutThroughListener) runAcceptQueue() {
+	for {
 		conn, err := l.Listener.Accept()
+		log.Printf("cutthrough: remote=%s Accept()", conn.RemoteAddr().String())
 		if err != nil {
-			// If accept fails, we close the listener logic
-			l.Close()
-			close(ch)
-			return
+			log.Fatalf("Listener closed: %v", err)
 		}
-		ch <- conn
-	}()
-	return ch
+		l.acceptQueue <- conn
+	}
 }
 
 // handleCutThrough attempts to dial the backend.
 func (l *CutThroughListener) handleCutThrough(clientConn net.Conn) {
 	// Attempt to connect to backend with timeout
-	backendConn, err := net.DialTimeout("tcp", l.backendAddr, l.timeout)
+	backendConn, err := net.DialTimeout("tcp", l.backendAddr, l.ctTimeout)
 
 	if err == nil {
+		log.Printf("cutthrough: remote=%s Backend connected")
 		// SUCCESS: Cut-through worked.
 		// Send the PROXY header
 		clientAddr := clientConn.RemoteAddr().String()
@@ -103,25 +101,19 @@ func (l *CutThroughListener) handleCutThrough(clientConn net.Conn) {
 			log.Printf("cutthrough: proxy header send failure: %w", err)
 		}
 		// Pipe data.
-		go proxy(clientConn, backendConn)
-		go proxy(backendConn, clientConn)
-		// Connections are closed by proxy via io.Copy reading EOF or error.
+		proxyConn(clientConn.(*net.TCPConn), backendConn.(*net.TCPConn), l.rwTimeout)
+		log.Printf("cutthrough: remote=%s Backend proxy closed")
 	} else {
+		log.Printf("cutthrough: remote=%s Backend unavailable")
 		// TIMEOUT or ERROR: Dial failed.
 		// Pass the client connection to the Accept() caller.
 		select {
-		case l.queue <- clientConn:
-			// Successfully queued for Accept()
+		case l.ctFailQueue <- clientConn:
+			// Queued for internal processing.
 		default:
 			// Queue full, drop connection.
+			log.Printf("cutthrough: handleCutThrough(): ctFailQueue full!")
 			clientConn.Close()
 		}
 	}
-}
-
-// proxy copies data between two connections.
-func proxy(dst io.WriteCloser, src io.ReadCloser) {
-	defer dst.Close()
-	defer src.Close()
-	io.Copy(dst, src)
 }
