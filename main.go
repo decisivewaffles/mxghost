@@ -236,7 +236,7 @@ func main() {
 	go cli.Run()
 
 	log.Printf(
-		"relay started — listeners: %s | backend: mxaddr=%q mxname=%q port=%d | queue: %s",
+		"relay started — listeners: %s | backend: mxaddr=%q mxname=%q | queue: %s",
 		conf.Listeners, conf.MxAddr, conf.MxName, conf.QueueDir,
 	)
 

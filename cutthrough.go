@@ -71,7 +71,7 @@ func (l *CutThroughListener) Accept() (net.Conn, error) {
 func (l *CutThroughListener) runAcceptQueue() {
 	for {
 		conn, err := l.Listener.Accept()
-		log.Printf("cutthrough: remote=%s Accept()", conn.RemoteAddr().String())
+		log.Printf("cutthrough: client=%s Accept()", conn.RemoteAddr().String())
 		if err != nil {
 			log.Fatalf("Listener closed: %v", err)
 		}
@@ -85,7 +85,7 @@ func (l *CutThroughListener) handleCutThrough(clientConn net.Conn) {
 	backendConn, err := net.DialTimeout("tcp", l.backendAddr, l.ctTimeout)
 
 	if err == nil {
-		log.Printf("cutthrough: remote=%s Backend connected")
+		log.Printf("cutthrough: client=%s Backend connected", clientConn.RemoteAddr().String())
 		// SUCCESS: Cut-through worked.
 		// Send the PROXY header
 		clientAddr := clientConn.RemoteAddr().String()
@@ -102,9 +102,9 @@ func (l *CutThroughListener) handleCutThrough(clientConn net.Conn) {
 		}
 		// Pipe data.
 		proxyConn(clientConn.(*net.TCPConn), backendConn.(*net.TCPConn), l.rwTimeout)
-		log.Printf("cutthrough: remote=%s Backend proxy closed")
+		log.Printf("cutthrough: client=%s Backend proxy closed", clientConn.RemoteAddr().String())
 	} else {
-		log.Printf("cutthrough: remote=%s Backend unavailable")
+		log.Printf("cutthrough: client=%s Backend unavailable", clientConn.RemoteAddr().String())
 		// TIMEOUT or ERROR: Dial failed.
 		// Pass the client connection to the Accept() caller.
 		select {
