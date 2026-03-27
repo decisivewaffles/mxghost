@@ -97,7 +97,7 @@ func (c *Client) deliver(qi *QueueItem) error {
 		return fmt.Errorf("set deadline: %w", err)
 	}
 	// Send the PROXY header
-	proxyHeader, err := ProxyProtocolHeader(qi)
+	proxyHeader, err := ProxyProtocolHeader(qi.Message.ClientIP, qi.Message.ServerIP)
 	if err != nil {
 		conn.Close()
 		return fmt.Errorf("proxy header generation failure: %w", err)

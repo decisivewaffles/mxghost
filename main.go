@@ -42,6 +42,7 @@ func (m *multiFlag) Set(v string) error {
 type Config struct {
 	MxAddr        string    `yaml:"mxaddr"`
 	MxName        string    `yaml:"mxname"`
+	MxTimeout     int       `yaml:"mxtimeout"`
 	Listeners     multiFlag `yaml:"listen"`
 	AllowListPath string    `yaml:"allowlist"`
 	Reconnect     int       `yaml:"reconnect"`
@@ -96,6 +97,8 @@ func main() {
 		"Primary MX IP address and port (required)")
 	flag.StringVar(&conf.MxName, "mxname", conf.MxName,
 		"Primary MX name (for TLS validation) (required)")
+	flag.IntVar(&conf.MxTimeout, "mxtimeout", conf.MxTimeout,
+		"Primary MX connection timeout (seconds) before engaging store and forward")
 	flag.Var(&flagListeners, "listen",
 		"Listen on `addr:port`; use brackets for IPv6, e.g. [::1]:25\n\t"+
 			"(repeatable; default: 0.0.0.0:25 and [::]:25)")
@@ -153,6 +156,10 @@ func main() {
 
 	// == Defaults ==============================================================
 
+	if conf.MxTimeout == 0 {
+		conf.MxTimeout = 1
+	}
+
 	if len(flagListeners) > 0 {
 		conf.Listeners = flagListeners
 	}
@@ -166,7 +173,7 @@ func main() {
 	}
 
 	// == Bind to listening ports ===============================================
-	listeners, err := bindListeners(conf.Listeners)
+	listeners, err := bindListeners(conf.Listeners, conf.MxAddr, time.Duration(conf.MxTimeout)*time.Second)
 	if err != nil {
 		log.Fatalf("listeners: %v", err)
 	}
@@ -207,7 +214,7 @@ func main() {
 		MXAddr:      conf.MxAddr,
 		MXName:      conf.MxName,
 		ImplicitTLS: false,
-		RequireTLS:  true,
+		RequireTLS:  false,
 		TLSInsecure: false,
 		RetryDelay:  time.Duration(conf.Reconnect) * time.Second,
 	})
@@ -234,7 +241,7 @@ func main() {
 	log.Printf("received %v, shutting down", s)
 }
 
-func bindListeners(listenaddrs []string) ([]net.Listener, error) {
+func bindListeners(listenaddrs []string, backendAddr string, ctTimeout time.Duration) ([]net.Listener, error) {
 	listeners := make([]net.Listener, 0)
 
 	for _, addr := range listenaddrs {
@@ -242,7 +249,9 @@ func bindListeners(listenaddrs []string) ([]net.Listener, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Unable to listen on %s: %v", addr, err)
 		}
-		listeners = append(listeners, listener)
+		ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout)
+
+		listeners = append(listeners, ctListener)
 	}
 	dropBindCapability()
 	return listeners, nil

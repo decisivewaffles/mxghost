@@ -143,17 +143,7 @@ func (s *smtpSession) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *smtpSession) Data(r io.Reader) error {
-	// STARTTLS (if it was negotiated) completes before the DATA command is
-	// issued, so querying connection state here reflects the final negotiated
-	// TLS parameters.  For plaintext sessions, cs.TLS.Version == 0.
 	cs := s.conn
-	ts, tlsUsed := cs.TLSConnectionState()
-
-	var tlsVersion, tlsCipher string
-	if tlsUsed {
-		tlsVersion = tlsVersionName(ts.Version)
-		tlsCipher = tls.CipherSuiteName(ts.CipherSuite)
-	}
 
 	body, err := io.ReadAll(r)
 	if err != nil {
@@ -161,16 +151,13 @@ func (s *smtpSession) Data(r io.Reader) error {
 	}
 
 	msg := QueuedMessage{
-		ID:         newMsgID(),
-		Timestamp:  time.Now().UTC(),
-		ClientIP:   s.clientIP,
-		ServerIP:   s.serverIP,
-		TLSUsed:    tlsUsed,
-		TLSVersion: tlsVersion,
-		TLSCipher:  tlsCipher,
-		Helo:       cs.Hostname(),
-		MailFrom:   s.mailFrom,
-		RcptTo:     append([]string(nil), s.rcptTo...), // defensive copy
+		ID:        newMsgID(),
+		Timestamp: time.Now().UTC(),
+		ClientIP:  s.clientIP,
+		ServerIP:  s.serverIP,
+		Helo:      cs.Hostname(),
+		MailFrom:  s.mailFrom,
+		RcptTo:    append([]string(nil), s.rcptTo...), // defensive copy
 	}
 
 	if err := s.bkd.srv.cfg.Queue.Write(msg, body); err != nil {
@@ -183,8 +170,8 @@ func (s *smtpSession) Data(r io.Reader) error {
 		})
 	}
 
-	log.Printf("server: accepted id=%s from=<%s> to=%v client=%s tls=%v cipher=%q",
-		msg.ID, s.mailFrom, s.rcptTo, s.clientIP, tlsUsed, tlsCipher)
+	log.Printf("server: accepted id=%s from=<%s> to=%v client=%s",
+		msg.ID, s.mailFrom, s.rcptTo, s.clientIP)
 	return nil
 }
 

@@ -24,16 +24,13 @@ import (
 // NOTE: go-smtp strips SMTP dot-stuffing when presenting data to Session.Data.
 // client.go must re-apply dot-stuffing when forwarding to the backend.
 type QueuedMessage struct {
-	ID         string    `json:"id"`
-	Timestamp  time.Time `json:"timestamp"`
-	ClientIP   string    `json:"client_ip"`
-	ServerIP   string    `json:"server_ip"`
-	TLSUsed    bool      `json:"tls_used"`
-	TLSVersion string    `json:"tls_version,omitempty"`
-	TLSCipher  string    `json:"tls_cipher,omitempty"`
-	Helo       string    `json:"helo"`
-	MailFrom   string    `json:"mail_from"`
-	RcptTo     []string  `json:"rcpt_to"`
+	ID        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	ClientIP  string    `json:"client_ip"`
+	ServerIP  string    `json:"server_ip"`
+	Helo      string    `json:"helo"`
+	MailFrom  string    `json:"mail_from"`
+	RcptTo    []string  `json:"rcpt_to"`
 }
 
 type Queue struct {

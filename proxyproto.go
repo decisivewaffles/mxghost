@@ -34,17 +34,6 @@ const (
 	// Byte lengths of the address+port block for each address family.
 	pp2AddrLenIPv4 = 12 // src_addr(4) + dst_addr(4) + src_port(2) + dst_port(2)
 	pp2AddrLenIPv6 = 36 // src_addr(16) + dst_addr(16) + src_port(2) + dst_port(2)
-
-	// PP2_TYPE_SSL — outer TLV type that wraps all TLS metadata.
-	pp2TypeSSL = 0x20
-
-	// PP2_CLIENT_SSL — bit flag carried in the first byte of the PP2_TYPE_SSL
-	// value, indicating the incoming connection was established over TLS.
-	pp2ClientSSL = 0x01
-
-	// Sub-TLV types nested inside PP2_TYPE_SSL.
-	pp2SubSSLVersion = 0x21 // PP2_SUBTYPE_SSL_VERSION — e.g. "TLSv1.3"
-	pp2SubSSLCipher  = 0x23 // PP2_SUBTYPE_SSL_CIPHER  — e.g. "TLS_AES_256_GCM_SHA384"
 )
 
 // ProxyProtocolHeader builds a binary HAProxy PROXY Protocol v2 header for
@@ -59,17 +48,17 @@ const (
 // The caller must write the returned bytes to the backend net.Conn immediately
 // before reading the SMTP banner; the spec requires the header to precede all
 // other data on the connection.
-func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
+func ProxyProtocolHeader(clientAddr string, serverAddr string) ([]byte, error) {
 	// == 1. Parse source address ===============================================
 	//
-	srcIP, srcPort, err := parseHostPort(qi.Message.ClientIP)
+	srcIP, srcPort, err := parseHostPort(clientAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	// == 2. Parse / resolve destination address ================================
 	//
-	dstIP, dstPort, err := parseHostPort(qi.Message.ServerIP)
+	dstIP, dstPort, err := parseHostPort(serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +91,7 @@ func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
 		binary.BigEndian.PutUint16(addrBlock[34:36], uint16(dstPort))
 	}
 
-	// == 4. Build TLV extensions ===============================================
-	var tlvs []byte
-	if qi.Message.TLSUsed {
-		tlvs = pp2BuildSSLTLV(qi.Message.TLSVersion, qi.Message.TLSCipher)
-	}
-
-	// == 5. Assemble the complete header =======================================
+	// == 4. Assemble the complete header =======================================
 	//
 	// Fixed 16-byte prefix layout:
 	//   [0 :12]  12 bytes  signature
@@ -116,7 +99,7 @@ func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
 	//   [13:14]   1 byte   address family | transport protocol
 	//   [14:16]   2 bytes  uint16 BE — byte length of everything that follows
 	// Followed by the address block and zero or more TLVs.
-	payloadLen := len(addrBlock) + len(tlvs)
+	payloadLen := len(addrBlock)
 	if payloadLen > 0xFFFF {
 		// Unreachable with normal TLS metadata, but guard the uint16 cast.
 		return nil, fmt.Errorf("proxy protocol: payload length %d overflows uint16", payloadLen)
@@ -127,50 +110,7 @@ func ProxyProtocolHeader(qi *QueueItem) ([]byte, error) {
 	hdr = append(hdr, pp2VerCmd, familyProto)
 	hdr = append(hdr, byte(payloadLen>>8), byte(payloadLen))
 	hdr = append(hdr, addrBlock...)
-	hdr = append(hdr, tlvs...)
 	return hdr, nil
-}
-
-// pp2BuildSSLTLV constructs a PP2_TYPE_SSL (0x20) TLV.
-//
-// The value portion mirrors struct pp2_tlv_ssl from the HAProxy spec:
-//
-//	Offset  Size  Field
-//	  0      1    client  PP2_CLIENT_SSL (0x01) — connection used TLS
-//	  1      4    verify  0x00000000 — no client-certificate check performed
-//	  5+     …    nested sub-TLVs (SSL_VERSION, SSL_CIPHER)
-//
-// Sub-TLVs for empty strings are omitted rather than written with zero-length
-// values, keeping the header as short as possible.
-func pp2BuildSSLTLV(version, cipher string) []byte {
-	// Encode sub-TLVs first so we know the total value length before writing
-	// the outer length field.
-	var sub []byte
-	if version != "" {
-		sub = append(sub, pp2MakeTLV(pp2SubSSLVersion, []byte(version))...)
-	}
-	if cipher != "" {
-		sub = append(sub, pp2MakeTLV(pp2SubSSLCipher, []byte(cipher))...)
-	}
-
-	// Outer TLV:  type(1) + length(2) + client(1) + verify(4) + sub-TLVs
-	valueLen := 1 + 4 + len(sub)
-	tlv := make([]byte, 3+valueLen)
-	tlv[0] = pp2TypeSSL
-	binary.BigEndian.PutUint16(tlv[1:3], uint16(valueLen))
-	tlv[3] = pp2ClientSSL                   // client flags
-	binary.BigEndian.PutUint32(tlv[4:8], 0) // verify = 0
-	copy(tlv[8:], sub)
-	return tlv
-}
-
-// pp2MakeTLV encodes a single TLV triplet: type(1) + length(2) + value(n).
-func pp2MakeTLV(typ byte, value []byte) []byte {
-	b := make([]byte, 3+len(value))
-	b[0] = typ
-	binary.BigEndian.PutUint16(b[1:3], uint16(len(value)))
-	copy(b[3:], value)
-	return b
 }
 
 func parseHostPort(addr string) (net.IP, uint64, error) {
