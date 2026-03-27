@@ -64,6 +64,8 @@ func proxyConn(client, backend *net.TCPConn, timeout time.Duration) {
 				if err != io.EOF {
 					log.Printf("read error: %v", err)
 				}
+				// Propagate EOF
+				dst.TCPConn.CloseWrite()
 				return
 			}
 		}
