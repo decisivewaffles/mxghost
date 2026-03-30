@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 type AllowList struct {
 	path    string
-	address map[string]bool
-	domain  map[string]bool
+	address atomic.Value
+	domain  atomic.Value
 }
 
 func NewAllowList(path string) (*AllowList, error) {
 	al := &AllowList{
-		path:    path,
-		address: make(map[string]bool),
-		domain:  make(map[string]bool),
+		path: path,
 	}
+	al.address.Store(make(map[string]bool))
+	al.domain.Store(make(map[string]bool))
 	return al, al.Reload()
 }
 
@@ -30,6 +31,8 @@ func (al *AllowList) Reload() error {
 	}
 	defer f.Close()
 
+	address := make(map[string]bool)
+	domain := make(map[string]bool)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.ToLower(scanner.Text())
@@ -37,22 +40,26 @@ func (al *AllowList) Reload() error {
 			continue
 		}
 		if strings.Contains(line, "@") {
-			al.address[line] = true
+			address[line] = true
 		} else {
-			al.domain[line] = true
+			domain[line] = true
 		}
 	}
+	al.address.Store(address)
+	al.domain.Store(domain)
 	return nil
 }
 
 func (al *AllowList) Allow(rcpt string) (bool, error) {
+	address := al.address.Load().(map[string]bool)
+	domain := al.domain.Load().(map[string]bool)
 	rcpt = strings.ToLower(rcpt)
-	if al.address[rcpt] {
+	if address[rcpt] {
 		return true, nil
 	}
-	_, domain, ok := strings.Cut(rcpt, "@")
+	_, rcptDomain, ok := strings.Cut(rcpt, "@")
 	if !ok {
 		return false, fmt.Errorf("Invalid recipient address: %s", rcpt)
 	}
-	return al.domain[domain], nil
+	return domain[rcptDomain], nil
 }

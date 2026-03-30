@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-smtp"
@@ -35,25 +36,38 @@ type ServerConfig struct {
 // Server is the inbound SMTP half of the relay.
 type Server struct {
 	cfg       ServerConfig
-	tlsConfig *tls.Config
+	tlsConfig atomic.Value
 }
 
-// NewServer performs all initialisation that can fail at startup: loading the
-// TLS keypair, creating the queue directory, and building the allow-list index.
+// NewServer performs the initialisation that can fail at startup: loading the
+// TLS keypair.
 // Any error indicates misconfiguration and should be treated as fatal by the
 // caller.
 func NewServer(cfg ServerConfig) (*Server, error) {
-	cert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+	s := &Server{cfg: cfg}
+	err := s.ReloadTLSCertificate()
 	if err != nil {
-		return nil, fmt.Errorf("load TLS keypair: %w", err)
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Server) ReloadTLSCertificate() error {
+	cert, err := tls.LoadX509KeyPair(s.cfg.CertPath, s.cfg.KeyPath)
+	if err != nil {
+		return fmt.Errorf("load TLS keypair: %w", err)
 	}
 
-	tlsCfg := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
+	s.tlsConfig.Store(&cert)
+	return nil
+}
 
-	return &Server{cfg: cfg, tlsConfig: tlsCfg}, nil
+func (s *Server) GetCertificate(hi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	// Return last updated TLS certificate
+	if cert, ok := s.tlsConfig.Load().(*tls.Certificate); ok {
+		return cert, nil
+	}
+	return nil, fmt.Errorf("Unable to load TLS certificate when serving client")
 }
 
 // Run starts one listener goroutine per entry in cfg.Listeners and blocks
@@ -76,7 +90,10 @@ func (s *Server) Run() {
 func (s *Server) serve(listener net.Listener) error {
 	gsrv := smtp.NewServer(&smtpBackend{srv: s})
 	gsrv.Domain = s.cfg.Banner
-	gsrv.TLSConfig = s.tlsConfig
+	gsrv.TLSConfig = &tls.Config{
+		GetCertificate: s.GetCertificate, // Dynamic TLS cert for cert updates
+		MinVersion:     tls.VersionTLS12,
+	}
 	gsrv.AllowInsecureAuth = false
 	gsrv.MaxMessageBytes = 40 * 1024 * 1024 // 40 MiB hard cap
 	gsrv.ReadTimeout = s.cfg.RwTimeout

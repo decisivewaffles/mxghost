@@ -243,10 +243,27 @@ func main() {
 	// == Shutdown ==============================================================
 	// TODO: propagate cancellation via context to srv.Run and cli.Run for
 	// graceful in-flight draining before exit.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	s := <-quit
-	log.Printf("received %v, shutting down", s)
+	for {
+		select {
+		case s := <-quit:
+			log.Printf("received %v, shutting down", s)
+			return
+		case <-hup:
+			log.Printf("Got SIGHUP, reloading allowlist and TLS certificate")
+			err := allowList.Reload()
+			if err != nil {
+				log.Printf("Unable to reload allowlist: %v", err)
+			}
+			err = srv.ReloadTLSCertificate()
+			if err != nil {
+				log.Printf("Unable to reload TLS certificate: %v", err)
+			}
+		}
+	}
 }
 
 func bindListeners(listenaddrs []string, backendAddr string, ctTimeout, rwTimeout time.Duration) ([]net.Listener, error) {
