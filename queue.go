@@ -161,6 +161,13 @@ func (q *Queue) Write(msg QueuedMessage, body []byte) error {
 	return nil
 }
 
+func (q *Queue) Rescan() {
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
+}
+
 // == Helpers ===================================================================
 
 func firstMsgFilename(entries []os.DirEntry) string {

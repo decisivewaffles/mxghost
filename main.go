@@ -262,6 +262,7 @@ func main() {
 			if err != nil {
 				log.Printf("Unable to reload TLS certificate: %v", err)
 			}
+			queue.Rescan()
 		}
 	}
 }
