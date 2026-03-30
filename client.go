@@ -85,7 +85,7 @@ func (c *Client) deliver(qi *QueueItem) error {
 	conn, err := c.dial()
 	if err != nil {
 		log.Printf("client: Unable to connect, waiting %d seconds", c.cfg.RetryDelay/time.Second)
-		time.Sleep(c.cfg.RetryDelay / time.Second)
+		time.Sleep(c.cfg.RetryDelay)
 		return err
 	}
 	log.Printf("client id=%s: connected", qi.Message.ID)
