@@ -253,7 +253,7 @@ func main() {
 			log.Printf("received %v, shutting down", s)
 			return
 		case <-hup:
-			log.Printf("Got SIGHUP, reloading allowlist and TLS certificate")
+			log.Printf("Got SIGHUP. Reloading allowlist. Reloading TLS certificate. Rescanning mail queue.")
 			err := allowList.Reload()
 			if err != nil {
 				log.Printf("Unable to reload allowlist: %v", err)
