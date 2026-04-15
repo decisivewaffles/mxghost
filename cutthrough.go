@@ -86,6 +86,9 @@ func (l *CutThroughListener) handleCutThrough(clientConn net.Conn) {
 
 	if err == nil {
 		log.Printf("cutthrough: client=%s Backend connected", clientConn.RemoteAddr().String())
+		// Disable Nagle
+		clientConn.(*net.TCPConn).SetNoDelay(true)
+		backendConn.(*net.TCPConn).SetNoDelay(true)
 		// SUCCESS: Cut-through worked.
 		// Send the PROXY header
 		clientAddr := clientConn.RemoteAddr().String()
