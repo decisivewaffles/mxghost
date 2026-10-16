@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -236,8 +237,8 @@ func main() {
 	go cli.Run()
 
 	log.Printf(
-		"relay started — listeners: %s | backend: mxaddr=%q mxname=%q | queue: %s",
-		conf.Listeners, conf.MxAddr, conf.MxName, conf.QueueDir,
+		"relay started — backend: mxaddr=%q mxname=%q | queue: %s",
+		conf.MxAddr, conf.MxName, conf.QueueDir,
 	)
 
 	// == Shutdown ==============================================================
@@ -267,26 +268,68 @@ func main() {
 	}
 }
 
+func listenerFromFD(fd int) (net.Listener, error) {
+	file := os.NewFile(uintptr(fd), fmt.Sprintf("fd-%d", fd))
+	if file == nil {
+		return nil, fmt.Errorf("invalid file descriptor: %d", fd)
+	}
+
+	listener, err := net.FileListener(file)
+	if err != nil {
+		return nil, err
+	}
+
+	file.Close()
+	return listener, nil
+}
+
 func bindListeners(listenaddrs []string, backendAddr string, ctTimeout, rwTimeout time.Duration) ([]net.Listener, error) {
 	listeners := make([]net.Listener, 0)
 
-	for _, addr := range listenaddrs {
-		listener, err := net.Listen("tcp", addr)
+	listen_fds_str := os.Getenv("LISTEN_FDS")
+	if len(listen_fds_str) > 0 {
+		listen_fds, err := strconv.Atoi(listen_fds_str)
 		if err != nil {
-			return nil, fmt.Errorf("Unable to listen on %s: %v", addr, err)
+			return nil, fmt.Errorf("Got invalid value in LISTEN_FDS environment variable: %s", listen_fds_str)
 		}
-		ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout, rwTimeout)
+		log.Printf("Detected socket activation: %d sockets", listen_fds)
+		listenFDStart := 3
+		for fd := listenFDStart; fd < listenFDStart+listen_fds; fd++ {
+			listener, err := listenerFromFD(fd)
+			if err != nil {
+				return nil, fmt.Errorf("Unable to listen on FD %v: %v", fd, err)
+			}
+			ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout, rwTimeout)
+			listeners = append(listeners, ctListener)
+		}
+	} else {
+		for _, addr := range listenaddrs {
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				return nil, fmt.Errorf("Unable to listen on %s: %v", addr, err)
+			}
+			ctListener := NewCutThroughListener(listener, backendAddr, ctTimeout, rwTimeout)
 
-		listeners = append(listeners, ctListener)
+			listeners = append(listeners, ctListener)
+		}
 	}
+	log.Printf("Finished binding sockets")
 	dropBindCapability()
 	return listeners, nil
+}
+
+func emptyCapabilitiesSet(caps *cap.Set) bool {
+	diff, _ := caps.Cf(cap.NewSet())
+	return diff == 0
 }
 
 func dropUnusedCapabilities() {
 	// Drop unneeded permissions
 	log.Printf("capabilities: started with %s", cap.GetProc().String())
 	caps := cap.GetProc()
+	if emptyCapabilitiesSet(caps) {
+		return
+	}
 	alarmAllowed, _ := caps.GetFlag(cap.Permitted, cap.WAKE_ALARM)
 	bindAllowed, _ := caps.GetFlag(cap.Permitted, cap.NET_BIND_SERVICE)
 	caps.Clear()
@@ -302,12 +345,15 @@ func dropUnusedCapabilities() {
 	if err != nil {
 		log.Printf("capabilities: Unable to drop: %v", err)
 	} else {
-		log.Printf("capabilities: currently %s", cap.GetProc().String())
+		log.Printf("capabilities: currently \"%s\"", cap.GetProc().String())
 	}
 }
 
 func dropBindCapability() {
 	caps := cap.GetProc()
+	if emptyCapabilitiesSet(caps) {
+		return
+	}
 	alarmAllowed, _ := caps.GetFlag(cap.Permitted, cap.WAKE_ALARM)
 	caps.Clear()
 	if alarmAllowed {
@@ -318,6 +364,6 @@ func dropBindCapability() {
 	if err != nil {
 		log.Printf("capabilities: Unable to minimize: %v", err)
 	} else {
-		log.Printf("capabilities: currently %s", cap.GetProc().String())
+		log.Printf("capabilities: currently \"%s\"", cap.GetProc().String())
 	}
 }
