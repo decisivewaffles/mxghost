@@ -1,0 +1,10 @@
+.version
+build/
+debian/.debhelper
+debian/deb/
+debian/debhelper-build-stamp
+debian/mxghost/
+debian/mxghost.debhelper.log
+debian/mxghost.postinst.debhelper
+debian/mxghost.postrm.debhelper
+debian/pkg/*.deb

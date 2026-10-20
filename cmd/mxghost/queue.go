@@ -1,7 +1,6 @@
-// queue.go
-//
-// Targets github.com/emersion/go-smtp v0.21.x or later.
-// If using an older version where Session.Rcpt only takes (string), drop opts.
+// Copyright (C) 2026 DecisiveWaffles <decisivewaffles@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 import (
@@ -20,9 +19,6 @@ import (
 // QueuedMessage is the metadata envelope for one queued mail item.
 // Each queue file consists of exactly one compact JSON line containing this
 // struct, a '\n', then the raw SMTP DATA payload for the remainder of the file.
-//
-// NOTE: go-smtp strips SMTP dot-stuffing when presenting data to Session.Data.
-// client.go must re-apply dot-stuffing when forwarding to the backend.
 type QueuedMessage struct {
 	ID        string    `json:"id"`
 	Timestamp time.Time `json:"timestamp"`

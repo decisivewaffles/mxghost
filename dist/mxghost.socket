@@ -1,0 +1,10 @@
+[Unit]
+Description=Socket for mxghost
+
+[Socket]
+ListenStream=0.0.0.0:25
+NoDelay=true
+Backlog=32
+
+[Install]
+WantedBy=sockets.target

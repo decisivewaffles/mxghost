@@ -1,4 +1,4 @@
-module github.com/decisivewaffles/proxmail
+module github.com/decisivewaffles/mxghost
 
 go 1.26.1
 

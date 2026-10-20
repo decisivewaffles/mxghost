@@ -1,0 +1,10 @@
+# List of domains or email addresses to queue mail for
+#
+# WARNING: All mail will be refused for queuing if no entries exist
+#
+# [Example:]
+# test@example.com
+# notspam@example.com
+# testing.example.com
+
+mail.example.com

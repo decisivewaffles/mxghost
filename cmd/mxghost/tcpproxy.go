@@ -1,3 +1,6 @@
+// Copyright (C) 2026 DecisiveWaffles <decisivewaffles@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 // Simple TCP <-> TCP pass through with timeout

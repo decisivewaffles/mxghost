@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        rm -rf /var/lib/mxghost
+        if getent passwd mxghost >/dev/null; then
+            deluser --system mxghost || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

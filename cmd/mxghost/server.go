@@ -1,7 +1,6 @@
-// server.go
-//
-// Targets github.com/emersion/go-smtp v0.21.x or later.
-// If using an older version where Session.Rcpt only takes (string), drop opts.
+// Copyright (C) 2026 DecisiveWaffles <decisivewaffles@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 import (

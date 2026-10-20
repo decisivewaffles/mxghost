@@ -1,0 +1,76 @@
+[Unit]
+Description=Inbound email proxy
+Requires=mxghost.socket
+After=mxghost.socket
+
+[Service]
+# User/Group
+User=mxghost
+Group=mxghost
+
+# Chroot Environment
+RootDirectory=/var/lib/mxghost/chroot/
+RootDirectoryStartOnly=true
+
+# Mount in the binary itself
+BindReadOnlyPaths=/usr/bin/mxghost:/usr/bin/mxghost
+# Mount in the config
+BindReadOnlyPaths=/etc/mxghost/:/etc/mxghost/
+# Mount in root CA certs
+BindReadOnlyPaths=/etc/ssl/certs/:/etc/ssl/certs/
+# Mount in queue
+BindPaths=/var/lib/mxghost/queue:/var/lib/mxghost/queue
+
+# Execution
+# systemd handles the lifecycle; no ExecStop needed.
+ExecStart=/usr/bin/mxghost --config /etc/mxghost/mxghost.yaml
+ExecReload=+kill -HUP $MAINPID
+
+# Restart Policy
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateMounts=yes
+PrivateIPC=yes
+KeyringMode=private
+
+# This wouldn't start, probably because of filesystem permissions issues
+# PrivateUsers=yes
+
+ProtectSystem=strict
+ProtectHome=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+
+RemoveIPC=yes
+LockPersonality=yes
+
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallFilter=~@resources
+SystemCallArchitectures=native
+
+AmbientCapabilities=
+CapabilityBoundingSet=
+
+RestrictAddressFamilies=AF_INET AF_INET6
+# All socket binding done with socket activation
+SocketBindDeny=any
+
+[Install]
+WantedBy=multi-user.target
+Also=mxghost.socket

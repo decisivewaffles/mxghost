@@ -1,0 +1,13 @@
+Source: mxghost
+Section: net
+Priority: optional
+Maintainer: Decisive Waffles <decisisvewaffles@gmail.com>
+Build-Depends: debhelper-compat (= 13), golang-go, dh-sequence-installsysusers
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/decisivewaffles/mxghost
+
+Package: mxghost
+Architecture: any
+Depends: ${misc:Depends}, systemd
+Description: Inbound email via PROXY protocol directly, queuing if backend unreachable.

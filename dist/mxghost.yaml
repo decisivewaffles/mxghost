@@ -1,0 +1,9 @@
+allowlist: /etc/mxghost/allowlist
+banner: mail.example.com
+mxaddr: 192.0.2.2:25
+mxname: mail.example.com
+cert: /etc/mxghost/mail.example.com.crt
+key: /etc/mxghost/mail.example.com.key
+queue: /var/lib/mxghost/queue
+listen: ["127.0.0.1:25"]
+rwtimeout: 60

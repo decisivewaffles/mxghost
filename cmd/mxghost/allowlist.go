@@ -1,4 +1,6 @@
-// allowlist.go
+// Copyright (C) 2026 DecisiveWaffles <decisivewaffles@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 import (

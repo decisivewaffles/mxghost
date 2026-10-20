@@ -1,0 +1,10 @@
+var/lib/mxghost
+var/lib/mxghost/chroot
+var/lib/mxghost/chroot/etc
+var/lib/mxghost/chroot/etc/ssl
+var/lib/mxghost/chroot/etc/ssl/certs
+var/lib/mxghost/chroot/var
+var/lib/mxghost/chroot/var/lib
+var/lib/mxghost/chroot/var/lib/mxghost
+var/lib/mxghost/chroot/var/lib/mxghost/queue
+var/lib/mxghost/queue

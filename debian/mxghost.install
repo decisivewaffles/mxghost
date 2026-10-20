@@ -1,0 +1,3 @@
+build/mxghost usr/bin
+dist/mxghost.yaml etc/mxghost
+dist/allowlist etc/mxghost

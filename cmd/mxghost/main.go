@@ -1,3 +1,6 @@
+// Copyright (C) 2026 DecisiveWaffles <decisivewaffles@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package main
 
 import (
@@ -39,17 +42,19 @@ func (m *multiFlag) Set(v string) error {
 }
 
 type Config struct {
-	MxAddr        string    `yaml:"mxaddr"`
-	MxName        string    `yaml:"mxname"`
-	MxTimeout     int       `yaml:"mxtimeout"`
-	Listeners     multiFlag `yaml:"listen"`
-	AllowListPath string    `yaml:"allowlist"`
-	Reconnect     int       `yaml:"reconnect"`
-	RwTimeout     int       `yaml:"rwtimeout"`
-	CertPath      string    `yaml:"cert"`
-	KeyPath       string    `yaml:"key"`
-	Banner        string    `yaml:"banner"`
-	QueueDir      string    `yaml:"queue"`
+	MxAddr             string    `yaml:"mxaddr"`
+	MxName             string    `yaml:"mxname"`
+	MxTimeout          int       `yaml:"mxtimeout"`
+	MxStartTLSOptional bool      `yaml:"mxstarttlsoptional"`
+	MxSkipTLSVerify    bool      `yaml:"mxskiptlsverify"`
+	Listeners          multiFlag `yaml:"listen"`
+	AllowListPath      string    `yaml:"allowlist"`
+	Reconnect          int       `yaml:"reconnect"`
+	RwTimeout          int       `yaml:"rwtimeout"`
+	CertPath           string    `yaml:"cert"`
+	KeyPath            string    `yaml:"key"`
+	Banner             string    `yaml:"banner"`
+	QueueDir           string    `yaml:"queue"`
 }
 
 func readConfig(path string) (Config, error) {
@@ -82,7 +87,7 @@ func main() {
 	tmpFlagSet := flag.NewFlagSet("tmp", flag.ContinueOnError)
 	tmpFlagSet.SetOutput(io.Discard)
 	tmpFlagSet.StringVar(&confPath, "config", "",
-		"Path to config file")
+		"Path to YAML config file")
 	tmpFlagSet.Parse(os.Args[1:])
 
 	conf, err := readConfig(confPath)
@@ -99,15 +104,20 @@ func main() {
 		"Primary MX name (for TLS validation) (required)")
 	flag.IntVar(&conf.MxTimeout, "mxtimeout", conf.MxTimeout,
 		"Primary MX connection timeout (seconds) before engaging store and forward")
+	flag.BoolVar(&conf.MxStartTLSOptional, "mxstarttlsoptional", conf.MxStartTLSOptional,
+		"Don't require STARTTLS when draining queue (optional)")
+	flag.BoolVar(&conf.MxSkipTLSVerify, "mxskiptlsverify", conf.MxSkipTLSVerify,
+		"Skip certificate validation when draining queue (optional)")
 	flag.Var(&flagListeners, "listen",
 		"Listen on `addr:port`; use brackets for IPv6, e.g. [::1]:25\n\t"+
-			"(repeatable; default: 0.0.0.0:25 and [::]:25)")
+			"(repeatable; default: 0.0.0.0:25 and [::]:25)\n\t"+
+			"NOTE: ignored if env LISTEN_FDS is set (for socket activation)")
 	flag.StringVar(&conf.AllowListPath, "allowlist",
 		conf.AllowListPath, "Path to list of allowed recipients (required)")
 	flag.IntVar(&conf.RwTimeout, "rwtimeout", conf.RwTimeout,
 		"Read/write activity timeout (seconds) before closing connection")
 	flag.IntVar(&conf.Reconnect, "reconnect", conf.Reconnect,
-		"Queue retry `interval` in seconds when the queue is non-empty")
+		"Queue retry `interval` (seconds) when the queue is non-empty (required)")
 	flag.StringVar(&conf.CertPath, "cert", conf.CertPath,
 		"`Path` to TLS certificate file (.crt) (required)")
 	flag.StringVar(&conf.KeyPath, "key", conf.KeyPath,
@@ -146,6 +156,9 @@ func main() {
 	if conf.AllowListPath == "" {
 		errorf("-allowlist is required")
 	}
+	if conf.QueueDir == "" {
+		errorf("-queuedir is required")
+	}
 
 	if len(errs) > 0 {
 		for _, e := range errs {
@@ -168,10 +181,6 @@ func main() {
 
 	if len(conf.Listeners) == 0 {
 		conf.Listeners = multiFlag{"0.0.0.0:25", "[::]:25"}
-	}
-
-	if conf.QueueDir == "" {
-		conf.QueueDir = "/var/spool/proxmail"
 	}
 
 	if conf.RwTimeout == 0 {
@@ -221,8 +230,8 @@ func main() {
 		MXAddr:      conf.MxAddr,
 		MXName:      conf.MxName,
 		ImplicitTLS: false,
-		RequireTLS:  false,
-		TLSInsecure: false,
+		RequireTLS:  !conf.MxStartTLSOptional,
+		TLSInsecure: conf.MxSkipTLSVerify,
 		RetryDelay:  time.Duration(conf.Reconnect) * time.Second,
 	})
 	if err != nil {
