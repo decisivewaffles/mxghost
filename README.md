@@ -1,6 +1,8 @@
-# mxx - Inbound SMTP proxy using HAProxy PROXY v2 protocol
+# MXghost - Inbound SMTP proxy using HAProxy PROXY v2 protocol
 
 This is an attempt to optimize privacy and reliability constraints for small SMTP servers which may not always be reachable. It's a hybrid between a layer 4 TCP proxy and a TLS terminating L7 store and forward MX.
+
+![Screenshot](https://github.com/user-attachments/assets/881a1465-b0ec-499e-bd89-3bb3b7f1a01a "Logo")
 
 This requires a backend MX which supports HAProxy's PROXY v2 protocol. From the backend MX perspective, it's as if the mail was being delivered directly - the connecting IP is passed via PROXY headers and the mailer treats it as if directly connected, thus IP based filtering can be done at the backend MX without further configuration.
 
@@ -34,6 +36,12 @@ If your security model makes storing messages worse than being offline, I recomm
 
 ## Configuration
 
+If you're using the debian package, edit /etc/mxghost/mxghost.yaml and allowlist.
+
+You may also need to systemctl edit mxghost.socket if you wish to bind to something other than *:25.
+
+The configuration arguments are as follows (command line or yaml):
+```
   -allowlist string
     	Path to list of allowed recipients (required)
   -banner string
@@ -41,32 +49,38 @@ If your security model makes storing messages worse than being offline, I recomm
   -cert Path
     	Path to TLS certificate file (.crt) (required)
   -config string
-    	Path to YAML config file
+    	Path to config file
   -key Path
     	Path to TLS private key file (.key) (required)
   -listen addr:port
     	Listen on addr:port; use brackets for IPv6, e.g. [::1]:25
     		(repeatable; default: 0.0.0.0:25 and [::]:25)
-       		NOTE: ignored if env LISTEN_FDS is set (for socket activation)
+    		NOTE: ignored if env LISTEN_FDS is set (for socket activation)
   -mxaddr string
     	Primary MX IP address and port (required)
   -mxname string
     	Primary MX name (for TLS validation) (required)
+  -mxskiptlsverify
+    	Skip certificate validation when draining queue (optional)
+  -mxstarttlsoptional
+    	Don't require STARTTLS when draining queue (optional)
   -mxtimeout int
     	Primary MX connection timeout (seconds) before engaging store and forward
-        Default 1.0 seconds
   -queue Directory
-    	Directory used for queue storage (required)
+    	Directory used for queue storage
   -reconnect interval
-    	Queue retry interval (seconds) when the queue is non-empty
+    	Queue retry interval (seconds) when the queue is non-empty (required)
   -rwtimeout int
     	Read/write activity timeout (seconds) before closing connection
+```
 
 The configuration file supports the same settings under the same name. For `listen` use a YAML list rather than repeating the entry.
 
 If environment variable LISTEN_FDS is set, `listen` configuration will be ignored.
 
 ## Install
+
+Use `dpkg -i <*.deb>` to install the provided package. A repo is planned for automatic updates but not yet implemented.
 
 ## License
 
